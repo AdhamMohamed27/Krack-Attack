@@ -10,7 +10,7 @@ Remember that our scripts are not attack scripts! You will need the appropriate 
 Our scripts were tested on Kali Linux. To install the required dependencies on Kali, execute:
 
 	sudo apt update
-	sudo apt install libnl-3-dev libnl-genl-3-dev pkg-config libssl-dev net-tools git sysfsutils virtualenv
+	sudo apt install libnl-3-dev libnl-genl-3-dev pkg-config libssl-dev net-tools git sysfsutils python3-venv
 
 Now compile our modified hostapd instance and create a python virtual environment. This assure you're using compatible python libraries (those listed in `krackattack/requirements.txt`):
 
