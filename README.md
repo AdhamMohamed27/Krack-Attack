@@ -48,7 +48,7 @@ You should now run the following tests located in the `krackattacks/` directory:
 
 1. **`./krack-test-client.py --replay-broadcast`**. This tests whether the client accepts replayed broadcast frames. If the client accepts replayed broadcast frames, this must be patched first. If you do not patch the client, our script will not be able to determine if the group key is being reinstalled (because then the script will always say the group key is being reinstalled).
 
-2. **`./krack-test-client.py --group --gtkinit`**. This tests whether the client installs the group key in the group key handshake with the given receive sequence counter (RSC). See section 6.4 of our [follow-up research paper(https://papers.mathyvanhoef.com/ccs2018.pdf)] for the details behind this vulnerability.
+2. **`./krack-test-client.py --group --gtkinit`**. This tests whether the client installs the group key in the group key handshake with the given receive sequence counter (RSC). See section 6.4 of our [follow-up research paper](https://papers.mathyvanhoef.com/ccs2018.pdf) for the details behind this vulnerability.
 
 3. **`./krack-test-client.py --group`**. This tests whether the client reinstalls the group key in the group key handshake. In other words, it **tests if the client is vulnerable to CVE-2017-13080**. The script tests for reinstallations of the group key by sending broadcast ARP requests to the client using an already used (replayed) packet number (here packet number = nonce = IV). Note that if the client always accepts replayed broadcast frames (see `--replay-broadcast`), this test might incorrectly conclude the group key is being reinstalled.
 
