@@ -2,7 +2,9 @@ This project contains scripts to test if clients or access points (APs) are affe
 
 Remember that our scripts are not attack scripts! You will need the appropriate network credentials in order to test if an access point or client is affected by the KRACK attack.
 
-**21 January 2021**: the scripts have been made compatible with Python3 and has been updated to better support newer Linux distributions. If you want to revert to the old version, execute `git fetch --tags && git checkout v1` after cloning the repository (and switch back to the latest version using `git checkout research`).
+**December 2024**: a bug has been fixed in the 7th test `./krack-test-client.py --gtkinit`. Before this bugfix, it was mentioned that (the output of) this test was unreliable, but now the output should be trustworthy when following the new instructions. That is, when this test now indicates that the device is vulnerable, it indeed is likely vulnerable.
+
+**January 2021**: the scripts have been made compatible with Python3 and has been updated to better support newer Linux distributions. If you want to revert to the old version, execute `git fetch --tags && git checkout v1` after cloning the repository (and switch back to the latest version using `git checkout research`).
 
 
 # Prerequisites
@@ -58,8 +60,11 @@ You should now run the following tests located in the `krackattacks/` directory:
 
 6. **`./krack-test-client.py --tptk-rand`**. Same as the above test, except that the forged message 1 contains a random ANonce.
 
-7. **`./krack-test-client.py --gtkinit`**. This tests whether the client installs the group key in the 4-way handshake with the given receive sequence counter (RSC). The script will continously execute new 4-way handshakes to test this. Unfortunately, this test can be rather unreliable, because any missed handshake messages cause synchronization issues, making the test unreliable. You should only execute this test in environments with little background noise, and execute it several times.
-
+7. **`./krack-test-client.py --gtkinit`**. This tests whether the client installs the group key in the 4-way handshake with the given receive sequence counter (RSC). This is done by retransmitting Msg3/4 of the 4-way handshake, each time with a new group key and a very high replay counter. We know it is vulnerable if the client under test afterwards accepts broadcast frames with a lower replay counter. Unfortunately, some clients do not accept retransmitted Msg3/4 at all, meaning such clients cannot be tested with this command. Clients that do accept a retransmitted Msg3/4, and therefore _can_ be tested with this command, will reply with a Msg4/4 which can be detected based on the following output:
+	```
+	[09:24:11] 02:20:2a:22:a8:30: received a new message 4
+	```
+	We also recommend executing this test in environments with little background noise and executing it several times.
 
 Some additional remarks:
 
@@ -199,3 +204,4 @@ It's also possible to manually perform (more detailed) tests by cloning the host
 	git clone git://w1.fi/srv/git/hostap.git
 	
 And following the instructions in [tests/cipher-and-key-mgmt-testing.txt](https://w1.fi/cgit/hostap/tree/tests/cipher-and-key-mgmt-testing.txt).
+

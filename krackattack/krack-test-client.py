@@ -245,7 +245,7 @@ class ClientState():
 			# We sent four broadcast ARP requests, and didn't get a reply to any. This indicates the client is patched.
 			elif self.broadcast_state == ClientState.STARTED:
 				self.broadcast_patched_intervals += 1
-				log(DEBUG, "%s: didn't get reply received to broadcast ARPs during this interval" % self.mac)
+				log(DEBUG, "%s: didn't recieve a reply to broadcast ARPs during this interval" % self.mac)
 				self.broadcast_state = ClientState.STARTED
 
 			self.broadcast_requests_sent = 0
@@ -485,7 +485,7 @@ class KRAckAttackClient():
 			log(ERROR, "Did you disable Wi-Fi in the network manager? Otherwise hostapd won't work.")
 			raise
 
-		self.sock_mon = MitmSocket(type=ETH_P_ALL, iface=self.nic_mon)
+		self.sock_mon = MonitorSocket(type=ETH_P_ALL, iface=self.nic_mon)
 		self.sock_eth = L2Socket(type=ETH_P_ALL, iface=self.nic_iface)
 
 		# Let scapy handle DHCP requests
@@ -525,12 +525,18 @@ class KRAckAttackClient():
 				for client in self.clients.values():
 					#self.experimental_test_igtk_installation()
 
-					# 1. Test the 4-way handshake
-					if self.options.variant == TestOptions.Fourway and self.options.gtkinit and client.vuln_bcast != ClientState.VULNERABLE:
-						# Execute a new handshake to test stations that don't accept a retransmitted message 3
-						hostapd_command(self.hostapd_ctrl, "RENEW_PTK " + client.mac)
-						# TODO: wait untill 4-way handshake completed? And detect failures (it's sensitive to frame losses)?
-					elif self.options.variant == TestOptions.Fourway and not self.options.gtkinit and client.vuln_4way != ClientState.VULNERABLE:
+					# TODO: Some clients may not accept/process a retransmitted Msg3/4. For these clients,
+					#       when testing the 4-way handshashake with --gtkinit, we should instead use the
+					#       RENEW_PTK command with the argument maxrsc. However, this is not yet supported
+					#       by our modified Hostapd instance. So for now, we fall back on always retransmitting
+					#       Msg3/4 when using --gtkinit while testing in the 4-way handshake.
+					#if self.options.variant == TestOptions.Fourway and self.options.gtkinit and client.vuln_bcast != ClientState.VULNERABLE:
+					#	# Execute a new handshake to test stations that don't accept a retransmitted message 3
+					#	hostapd_command(self.hostapd_ctrl, "RENEW_PTK " + client.mac)
+					#	# TODO: wait untill 4-way handshake completed? And detect failures (it's sensitive to frame losses)?
+					#elif self.options.variant == TestOptions.Fourway and not self.options.gtkinit and client.vuln_4way != ClientState.VULNERABLE:
+
+					if self.options.variant == TestOptions.Fourway and client.vuln_bcast != ClientState.VULNERABLE:
 						# First inject a message 1 if requested using the TPTK option
 						if self.options.tptk == TestOptions.TptkReplay:
 							hostapd_command(self.hostapd_ctrl, "RESEND_M1 " + client.mac)
