@@ -3,6 +3,7 @@
 # This code may be distributed under the terms of the BSD license.
 # See README for more details.
 from scapy.all import *
+from scapy.arch.linux import L2Socket
 from Crypto.Cipher import AES
 from datetime import datetime
 import binascii
@@ -72,8 +73,14 @@ def get_device_driver(iface):
 
 #### Utility ####
 
-def get_mac_address(interface):
-	return open("/sys/class/net/%s/address" % interface).read().strip()
+def get_macaddress(iface):
+	try:
+		# This method has been widely tested.
+		s = get_if_raw_hwaddr(iface)[1]
+		return ("%02x:" * 6)[:-1] % tuple(orb(x) for x in s)
+	except:
+		# Keep the old method as a backup though.
+		return open("/sys/class/net/%s/address" % iface).read().strip()
 
 def addr2bin(addr):
 	return binascii.a2b_hex(addr.replace(':', ''))
@@ -85,27 +92,19 @@ def get_channel(iface):
 	if m == None: return None
 	return int(m.group(1))
 
-def get_channel(iface):
-	output = str(subprocess.check_output(["iw", iface, "info"]))
-	p = re.compile("channel (\d+)")
-	m = p.search(output)
-	if m == None:
-		return None
-	return int(m.group(1))
-
 def set_channel(iface, channel):
-	subprocess.check_output(["iw", iface, "set", "channel", str(channel)])
+	if isinstance(channel, int):
+		# Compatibility with old channels encoded as simple integers
+		subprocess.check_output(["iw", iface, "set", "channel", str(channel)])
+	else:
+		# Channels represented as strings with extra info (e.g "11 HT40-")
+		subprocess.check_output(["iw", iface, "set", "channel"] + channel.split())
 
 def set_macaddress(iface, macaddr):
 	# macchanger throws an error if the interface already has the given MAC address
 	if get_macaddress(iface) != macaddr:
 		subprocess.check_output(["ifconfig", iface, "down"])
 		subprocess.check_output(["macchanger", "-m", macaddr, iface])
-
-def get_macaddress(iface):
-	"""This works even for interfaces in monitor mode."""
-	s = get_if_raw_hwaddr(iface)[1]
-	return ("%02x:" * 6)[:-1] % tuple(orb(x) for x in s)
 
 def get_iface_type(iface):
 	output = str(subprocess.check_output(["iw", iface, "info"]))
@@ -203,12 +202,13 @@ if not "ORDER" in scapy.layers.dot11._rt_txflags:
 
 class MonitorSocket(L2Socket):
 	def __init__(self, iface, dumpfile=None, detect_injected=False, **kwargs):
-		super(MonitorSocket, self).__init__(iface, **kwargs)
 		self.pcap = None
-		if dumpfile:
-			self.pcap = PcapWriter("%s.%s.pcap" % (dumpfile, self.iface), append=False, sync=True)
 		self.detect_injected = detect_injected
 		self.default_rate = None
+		print(iface, kwargs)
+		super(MonitorSocket, self).__init__(iface, **kwargs)
+		if dumpfile:
+			self.pcap = PcapWriter("%s.%s.pcap" % (dumpfile, self.iface), append=False, sync=True)
 
 	def set_channel(self, channel):
 		subprocess.check_output(["iw", self.iface, "set", "channel", str(channel)])
@@ -225,15 +225,19 @@ class MonitorSocket(L2Socket):
 		if self.detect_injected:
 			p.FCfield |= 0x20
 
-		# Control data rate injected frames
-		if rate is None and self.default_rate is None:
-			rtap = RadioTap(present="TXFlags", TXFlags="NOSEQ+ORDER")
+		# Control data rate of injected frames
+		if RadioTap in p:
+			log(WARNING, f"MonitorSocket: Injected frame already contains RadioTap header: {repr(p)}")
 		else:
-			use_rate = rate if rate != None else self.default_rate
-			rtap = RadioTap(present="TXFlags+Rate", Rate=use_rate, TXFlags="NOSEQ+ORDER")
+			if rate is None and self.default_rate is None:
+				rtap = RadioTap(present="TXFlags", TXFlags="NOSEQ+ORDER")
+			else:
+				use_rate = rate if rate != None else self.default_rate
+				rtap = RadioTap(present="TXFlags+Rate", Rate=use_rate, TXFlags="NOSEQ+ORDER")
+			p = rtap/p
 
-		L2Socket.send(self, rtap/p)
-		if self.pcap: self.pcap.write(RadioTap()/p)
+		L2Socket.send(self, p)
+		if self.pcap: self.pcap.write(p)
 
 	def _strip_fcs(self, p):
 		"""
@@ -271,12 +275,14 @@ class MonitorSocket(L2Socket):
 		if self.pcap:
 			self.pcap.write(p)
 
-		# Hack: ignore frames that we just injected and are echoed back by the kernel
+		# Hack: ignore frames that we just injected and are echoed back. This may be useful
+		#       when an injected frame is received by another dongle.
 		if self.detect_injected and p.FCfield & 0x20 != 0:
 			return None
 
-		# Ignore reflection of injected frames. These have a small RadioTap header.
-		if not reflected and p[RadioTap].len < 13:
+		# Ignore reflection of injected frames. These contain TXFlags in the RadioTap header.
+		# FIXME: This also ignores Beacons generated on the same interface (at least with mac80211_hwsim).
+		if p[RadioTap].present & "TXFlags":
 			return None
 
 		# Strip the FCS if present, and drop the RadioTap header
@@ -310,42 +316,44 @@ def payload_to_iv(payload):
 
 def dot11_get_iv(p):
 	"""
-	Assume it's a CCMP frame. Old scapy can't handle Extended IVs.
-	This code only works for CCMP frames.
+	This function was tested when the frame is encrypted using CCMP.
+	It was not tested for other encrypion protocol (e.g. WEP, TKIP).
 	"""
+
+	# The simple and default case
 	if Dot11CCMP in p:
 		payload = raw(p[Dot11CCMP])
 		return payload_to_iv(payload)
 
-	elif Dot11TKIP in p:
-		# Scapy uses a heuristic to differentiate CCMP/TKIP and this may be wrong.
-		# So even when we get a Dot11TKIP frame, we should treat it like a Dot11CCMP frame.
-		payload = raw(p[Dot11TKIP])
-		return payload_to_iv(payload)
-
-	if Dot11CCMP in p:
-		payload = raw(p[Dot11CCMP])
-		return payload_to_iv(payload)
+	# Scapy uses a heuristic to differentiate CCMP/TKIP and this may be wrong.
+	# So even when we get a Dot11TKIP frame, we'll still treat it like a Dot11CCMP frame.
 	elif Dot11TKIP in p:
 		payload = raw(p[Dot11TKIP])
-		return payload_to_iv(payload)
-	elif Dot11Encrypted in p:
-		payload = raw(p[Dot11Encrypted])
 		return payload_to_iv(payload)
 
 	elif Dot11WEP in p:
 		wep = p[Dot11WEP]
+		# Older Scapy versions parse CCMP-encrypted frames as Dot11WEP. So we check if the
+		# extended IV flag is set, and if so, treat it like a CCMP frame.
 		if wep.keyid & 32:
-			# FIXME: Only CCMP is supported (TKIP uses a different IV structure)
+			# This only works for CCMP (TKIP uses a different IV structure).
 			return orb(wep.iv[0]) + (orb(wep.iv[1]) << 8) + (struct.unpack(">I", wep.wepdata[:4])[0] << 16)
+
+		# If the extended IV flag is not set meaning it's indeed WEP.
 		else:
 			return orb(wep.iv[0]) + (orb(wep.iv[1]) << 8) + (orb(wep.iv[2]) << 16)
 
+	# Scapy uses Dot11Encrypted if it couldn't determine how the frame was encrypted. Assume CCMP.
+	elif Dot11Encrypted in p:
+		payload = raw(p[Dot11Encrypted])
+		return payload_to_iv(payload)
+
+	# Manually detect encrypted frames in case (older versions of) Scapy failed to do this. Assume CCMP.
 	elif p.FCfield & 0x40:
 		return payload_to_iv(p[Raw].load)
 
-	else:
-		return None
+	# Couldn't determine the IV
+	return None
 
 def dot11_get_priority(p):
 	if not Dot11QoS in p: return 0
@@ -454,7 +462,7 @@ def is_from_sta(p, macaddr):
 	return True
 
 def get_bss(iface, clientmac, timeout=20):
-	ps = sniff(count=1, timeout=timeout, lfilter=lambda p: is_from_sta(p, clientmac), iface=iface)
+	ps = sniff(count=1, timeout=timeout, lfilter=lambda p: is_from_sta(p, clientmac) and p.addr2 != None, iface=iface)
 	if len(ps) == 0:
 		return None
 	return ps[0].addr1 if ps[0].addr1 != clientmac else ps[0].addr2
