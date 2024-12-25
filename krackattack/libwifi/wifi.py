@@ -205,7 +205,6 @@ class MonitorSocket(L2Socket):
 		self.pcap = None
 		self.detect_injected = detect_injected
 		self.default_rate = None
-		print(iface, kwargs)
 		super(MonitorSocket, self).__init__(iface, **kwargs)
 		if dumpfile:
 			self.pcap = PcapWriter("%s.%s.pcap" % (dumpfile, self.iface), append=False, sync=True)
