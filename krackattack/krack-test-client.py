@@ -467,6 +467,13 @@ class KRAckAttackClient():
 		# Open the patched hostapd instance that carries out tests and let it start
 		log(STATUS, "Starting hostapd ...")
 		try:
+
+			hostapd_bin = os.path.abspath(os.path.join(self.script_path, "../hostapd/hostapd"))
+			hostapd_conf = os.path.abspath(os.path.join(self.script_path, "hostapd.conf"))
+
+			print("[DEBUG] Using hostapd binary:", hostapd_bin)
+			print("[DEBUG] Using hostapd config:", hostapd_conf)
+			# We need to use the absolute path to the hostapd executable, otherwise it won't work
 			self.hostapd = subprocess.Popen([
 				os.path.join(self.script_path, "../hostapd/hostapd"),
 				os.path.join(self.script_path, "hostapd.conf")]

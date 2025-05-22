@@ -1,0 +1,17 @@
+[19:53:32] [0;31mFailed to get MAC address of wlp0s20f3. Specify an existing interface in hostapd.conf at the line "interface=NAME".[1;0m
+Traceback (most recent call last):
+  File "/home/adham-mohamed/newKrack/krackattacks-scripts/krackattack/krack-test-client.py", line 674, in <module>
+    attack = KRAckAttackClient()
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/adham-mohamed/newKrack/krackattacks-scripts/krackattack/krack-test-client.py", line 277, in __init__
+    self.apmac = scapy.arch.get_if_hwaddr(interface)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adham-mohamed/newKrack/krackattacks-scripts/krackattack/venv/lib/python3.12/site-packages/scapy/arch/__init__.py", line 91, in get_if_hwaddr
+    return resolve_iface(iff).mac or "00:00:00:00:00:00"
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/adham-mohamed/newKrack/krackattacks-scripts/krackattack/venv/lib/python3.12/site-packages/scapy/interfaces.py", line 434, in resolve_iface
+    return resolve_iface(dev, retry=False)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adham-mohamed/newKrack/krackattacks-scripts/krackattack/venv/lib/python3.12/site-packages/scapy/interfaces.py", line 431, in resolve_iface
+    raise ValueError("Interface '%s' not found !" % dev)
+ValueError: Interface 'wlp0s20f3' not found !
